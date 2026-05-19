@@ -2,6 +2,7 @@ package ee.ut.eventticketing.booking_service.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -31,6 +32,8 @@ import ee.ut.eventticketing.booking_service.service.BookingService;
 @AutoConfigureMockMvc(addFilters = false)
 class BookingControllerTest {
 
+    private static final String TICKET_TYPE_ID = "00000000-0000-4000-8000-000000000005";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -46,7 +49,7 @@ class BookingControllerTest {
                 1L,
                 10L,
                 "EUR",
-                List.of(new BookingItemRequest(5L, 2, BigDecimal.valueOf(25.00))));
+                List.of(new BookingItemRequest(TICKET_TYPE_ID, 2, BigDecimal.valueOf(25.00))));
 
         BookingResponse response = new BookingResponse(
                 100L,
@@ -57,7 +60,7 @@ class BookingControllerTest {
                 LocalDateTime.parse("2026-05-03T12:15:00"),
                 BigDecimal.valueOf(50.00),
                 "EUR",
-                List.of(new BookingItemResponse(200L, 5L, 2, BigDecimal.valueOf(25.00), "EUR")));
+                List.of(new BookingItemResponse(200L, TICKET_TYPE_ID, 2, BigDecimal.valueOf(25.00), "EUR")));
 
         when(bookingService.createBooking(any(CreateBookingRequest.class))).thenReturn(response);
 
@@ -86,5 +89,26 @@ class BookingControllerTest {
                         .content(invalidRequest))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Request validation failed"));
+    }
+
+    @Test
+    void getBookingsReturnsAllBookings() throws Exception {
+        BookingResponse response = new BookingResponse(
+                100L,
+                1L,
+                10L,
+                BookingStatus.PENDING,
+                LocalDateTime.parse("2026-05-03T12:00:00"),
+                LocalDateTime.parse("2026-05-03T12:15:00"),
+                BigDecimal.valueOf(50.00),
+                "EUR",
+                List.of(new BookingItemResponse(200L, TICKET_TYPE_ID, 2, BigDecimal.valueOf(25.00), "EUR")));
+
+        when(bookingService.getAllBookings()).thenReturn(List.of(response));
+
+        mockMvc.perform(get("/bookings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].bookingId").value(100))
+                .andExpect(jsonPath("$[0].items[0].ticketTypeId").value(TICKET_TYPE_ID));
     }
 }

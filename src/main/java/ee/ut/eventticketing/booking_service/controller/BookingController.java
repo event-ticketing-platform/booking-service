@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import ee.ut.eventticketing.booking_service.dto.BookingResponse;
 import ee.ut.eventticketing.booking_service.dto.CreateBookingRequest;
+import ee.ut.eventticketing.booking_service.dto.IssuedTicketResponse;
 import ee.ut.eventticketing.booking_service.dto.PaymentInitiationResponse;
 import ee.ut.eventticketing.booking_service.service.BookingService;
 import jakarta.validation.Valid;
@@ -36,10 +37,22 @@ public class BookingController {
         return bookingService.createBooking(request);
     }
 
+    @GetMapping("/bookings")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN')")
+    public List<BookingResponse> getBookings() {
+        return bookingService.getAllBookings();
+    }
+
     @GetMapping("/bookings/{id}")
     @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN')")
     public BookingResponse getBooking(@PathVariable Long id) {
         return bookingService.getBooking(id);
+    }
+
+    @GetMapping("/bookings/{id}/tickets")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN')")
+    public List<IssuedTicketResponse> getBookingTickets(@PathVariable Long id) {
+        return bookingService.getOrIssueTickets(id);
     }
 
     @DeleteMapping("/bookings/{id}")

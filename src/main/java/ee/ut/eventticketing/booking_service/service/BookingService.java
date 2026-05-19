@@ -1,24 +1,29 @@
 package ee.ut.eventticketing.booking_service.service;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import ee.ut.eventticketing.booking_service.client.PaymentClient;
 import ee.ut.eventticketing.booking_service.client.TicketingClient;
+import ee.ut.eventticketing.booking_service.client.TicketingClient.TicketingTicketResponse;
 import ee.ut.eventticketing.booking_service.dto.BookingItemRequest;
 import ee.ut.eventticketing.booking_service.dto.BookingItemResponse;
 import ee.ut.eventticketing.booking_service.dto.BookingResponse;
 import ee.ut.eventticketing.booking_service.dto.CreateBookingRequest;
+import ee.ut.eventticketing.booking_service.dto.IssuedTicketResponse;
 import ee.ut.eventticketing.booking_service.dto.PaymentInitiationResponse;
 import ee.ut.eventticketing.booking_service.exception.BookingNotFoundException;
 import ee.ut.eventticketing.booking_service.messaging.BookingEventPublisher;
 import ee.ut.eventticketing.booking_service.model.Booking;
 import ee.ut.eventticketing.booking_service.model.BookingItem;
 import ee.ut.eventticketing.booking_service.model.BookingStatus;
+import ee.ut.eventticketing.booking_service.model.IssuedTicket;
 import ee.ut.eventticketing.booking_service.model.Money;
 import ee.ut.eventticketing.booking_service.repository.BookingRepository;
+import ee.ut.eventticketing.booking_service.repository.IssuedTicketRepository;
 
 @Service
 @Transactional
@@ -28,26 +33,26 @@ public class BookingService {
     private final TicketingClient ticketingClient;
     private final PaymentClient paymentClient;
     private final BookingEventPublisher bookingEventPublisher;
-    private final TicketCatalogService ticketCatalogService;
+    private final IssuedTicketRepository issuedTicketRepository;
 
     public BookingService(
             BookingRepository bookingRepository,
             TicketingClient ticketingClient,
             PaymentClient paymentClient,
             BookingEventPublisher bookingEventPublisher,
-            TicketCatalogService ticketCatalogService) {
+            IssuedTicketRepository issuedTicketRepository) {
         this.bookingRepository = bookingRepository;
         this.ticketingClient = ticketingClient;
         this.paymentClient = paymentClient;
         this.bookingEventPublisher = bookingEventPublisher;
-        this.ticketCatalogService = ticketCatalogService;
+        this.issuedTicketRepository = issuedTicketRepository;
     }
 
     public BookingResponse createBooking(CreateBookingRequest request) {
         request.items().forEach(item -> ticketingClient.reserveTickets(item.ticketTypeId(), item.quantity()));
 
         List<BookingItem> items = request.items().stream()
-                .map(item -> toBookingItem(item, request.currency(), request.eventId()))
+                .map(item -> toBookingItem(item, request.currency()))
                 .toList();
 
         Booking booking = new Booking(request.customerId(), request.eventId(), request.currency(), items);
@@ -136,23 +141,90 @@ public class BookingService {
                 .toList();
     }
 
+    public List<IssuedTicketResponse> getOrIssueTickets(Long bookingId) {
+        Booking booking = findBooking(bookingId);
+        if (booking.getBookingStatus() != BookingStatus.CONFIRMED) {
+            throw new IllegalStateException("Tickets are available after the booking is confirmed");
+        }
+
+        List<IssuedTicket> existingTickets = issuedTicketRepository.findByBookingIdOrderByIssuedTicketIdAsc(bookingId);
+        int expectedTicketCount = booking.getItems().stream()
+                .filter(this::hasTicketingTicketTypeId)
+                .mapToInt(BookingItem::getQuantity)
+                .sum();
+
+        if (existingTickets.size() < expectedTicketCount) {
+            issueMissingTickets(booking, existingTickets);
+            existingTickets = issuedTicketRepository.findByBookingIdOrderByIssuedTicketIdAsc(bookingId);
+        }
+
+        return existingTickets.stream()
+                .map(this::refreshAndMapIssuedTicket)
+                .toList();
+    }
+
     private Booking findBooking(Long bookingId) {
         return bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new BookingNotFoundException(bookingId));
     }
 
-    private BookingItem toBookingItem(BookingItemRequest request, String currency, Long eventId) {
-        var ticketType = ticketCatalogService.getTicketType(request.ticketTypeId());
-        if (!ticketType.eventId().equals(eventId)) {
-            throw new IllegalArgumentException("Ticket type does not belong to the selected event");
+    private void issueMissingTickets(Booking booking, List<IssuedTicket> existingTickets) {
+        for (BookingItem item : booking.getItems()) {
+            if (!hasTicketingTicketTypeId(item)) {
+                continue;
+            }
+            long existingForItem = existingTickets.stream()
+                    .filter(ticket -> item.getBookingItemId().equals(ticket.getBookingItemId()))
+                    .count();
+            for (long index = existingForItem; index < item.getQuantity(); index++) {
+                TicketingTicketResponse ticket = ticketingClient.issueTicket(item.getTicketTypeId(), booking.getBookingId());
+                issuedTicketRepository.save(new IssuedTicket(
+                        booking.getBookingId(),
+                        item.getBookingItemId(),
+                        String.valueOf(ticket.ticketTypeId()),
+                        String.valueOf(ticket.ticketId()),
+                        ticket.qrCode() != null ? ticket.qrCode() : String.valueOf(ticket.ticketId()),
+                        ticket.issuedAt(),
+                        ticket.used()));
+            }
         }
-        if (!ticketType.currency().equalsIgnoreCase(currency)) {
-            throw new IllegalArgumentException("Ticket currency does not match booking currency");
+    }
+
+    private boolean hasTicketingTicketTypeId(BookingItem item) {
+        try {
+            UUID.fromString(item.getTicketTypeId());
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private IssuedTicketResponse refreshAndMapIssuedTicket(IssuedTicket ticket) {
+        try {
+            boolean used = ticketingClient.getTicketStatus(ticket.getTicketId()).used();
+            ticket.setUsed(used);
+        } catch (RuntimeException ignored) {
+            // Keep the locally issued ticket visible even if Ticketing status is temporarily unavailable.
+        }
+        return new IssuedTicketResponse(
+                ticket.getIssuedTicketId(),
+                ticket.getBookingId(),
+                ticket.getBookingItemId(),
+                ticket.getTicketTypeId(),
+                ticket.getTicketId(),
+                ticket.getQrCode(),
+                ticket.getIssuedAt(),
+                ticket.isUsed());
+    }
+
+    private BookingItem toBookingItem(BookingItemRequest request, String currency) {
+        if (request.ticketTypeId().isBlank()) {
+            throw new IllegalArgumentException("Ticket type is required");
         }
         return new BookingItem(
                 request.ticketTypeId(),
                 request.quantity(),
-                new Money(ticketType.price(), ticketType.currency()));
+                new Money(request.unitPrice(), currency));
     }
 
     private BookingResponse toResponse(Booking booking) {

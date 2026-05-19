@@ -23,7 +23,6 @@ import ee.ut.eventticketing.booking_service.client.TicketingClient;
 import ee.ut.eventticketing.booking_service.dto.BookingItemRequest;
 import ee.ut.eventticketing.booking_service.dto.BookingResponse;
 import ee.ut.eventticketing.booking_service.dto.CreateBookingRequest;
-import ee.ut.eventticketing.booking_service.dto.TicketTypeResponse;
 import ee.ut.eventticketing.booking_service.messaging.BookingEventPublisher;
 import ee.ut.eventticketing.booking_service.model.Booking;
 import ee.ut.eventticketing.booking_service.model.BookingItem;
@@ -33,6 +32,8 @@ import ee.ut.eventticketing.booking_service.repository.BookingRepository;
 
 @ExtendWith(MockitoExtension.class)
 class BookingServiceTest {
+
+    private static final String TICKET_TYPE_ID = "00000000-0000-4000-8000-000000000005";
 
     @Mock
     private BookingRepository bookingRepository;
@@ -46,9 +47,6 @@ class BookingServiceTest {
     @Mock
     private BookingEventPublisher bookingEventPublisher;
 
-    @Mock
-    private TicketCatalogService ticketCatalogService;
-
     @InjectMocks
     private BookingService bookingService;
 
@@ -58,20 +56,13 @@ class BookingServiceTest {
                 1L,
                 10L,
                 "EUR",
-                List.of(new BookingItemRequest(5L, 2, BigDecimal.valueOf(25.00))));
+                List.of(new BookingItemRequest(TICKET_TYPE_ID, 2, BigDecimal.valueOf(25.00))));
 
         when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(ticketCatalogService.getTicketType(5L)).thenReturn(new TicketTypeResponse(
-                5L,
-                10L,
-                "Standard",
-                BigDecimal.valueOf(25.00),
-                "EUR",
-                40));
 
         BookingResponse response = bookingService.createBooking(request);
 
-        verify(ticketingClient).reserveTickets(5L, 2);
+        verify(ticketingClient).reserveTickets(TICKET_TYPE_ID, 2);
         verify(bookingRepository).save(any(Booking.class));
         assertThat(response.status()).isEqualTo(BookingStatus.PENDING);
         assertThat(response.totalAmount()).isEqualByComparingTo(BigDecimal.valueOf(50.00));
@@ -85,7 +76,7 @@ class BookingServiceTest {
                 1L,
                 10L,
                 "EUR",
-                List.of(new BookingItem(5L, 2, new Money(
+                List.of(new BookingItem(TICKET_TYPE_ID, 2, new Money(
                         BigDecimal.valueOf(25.00),
                         "EUR"))));
         ReflectionTestUtils.setField(booking, "bookingId", 100L);
@@ -106,7 +97,7 @@ class BookingServiceTest {
                 1L,
                 10L,
                 "EUR",
-                List.of(new BookingItem(5L, 2, new Money(
+                List.of(new BookingItem(TICKET_TYPE_ID, 2, new Money(
                         BigDecimal.valueOf(25.00),
                         "EUR"))));
         ReflectionTestUtils.setField(booking, "bookingId", 100L);
