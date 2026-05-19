@@ -10,7 +10,6 @@ services:
       SPRING_DATASOURCE_PASSWORD: booking_pass
       JWT_ISSUER: booking-service
       JWT_SECRET: booking-service-development-secret-key-32
-      TICKETING_SERVICE_URL: http://ticketing-service:8083
       PAYMENT_SERVICE_URL: http://payment-service:8082
     depends_on:
       - booking-db

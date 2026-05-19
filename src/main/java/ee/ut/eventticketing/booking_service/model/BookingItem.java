@@ -1,6 +1,7 @@
 package ee.ut.eventticketing.booking_service.model;
 
 import jakarta.persistence.Embedded;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -15,7 +16,8 @@ public class BookingItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long bookingItemId;
 
-    private Long ticketTypeId;
+    @Column(name = "external_ticket_type_id")
+    private String ticketTypeId;
 
     private int quantity;
 
@@ -29,7 +31,7 @@ public class BookingItem {
     protected BookingItem() {
     }
 
-    public BookingItem(Long ticketTypeId, int quantity, Money unitPrice) {
+    public BookingItem(String ticketTypeId, int quantity, Money unitPrice) {
         this.ticketTypeId = ticketTypeId;
         this.quantity = quantity;
         this.unitPrice = unitPrice;
@@ -43,7 +45,7 @@ public class BookingItem {
         return bookingItemId;
     }
 
-    public Long getTicketTypeId() {
+    public String getTicketTypeId() {
         return ticketTypeId;
     }
 

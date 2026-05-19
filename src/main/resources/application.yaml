@@ -5,6 +5,12 @@ spring:
   application:
     name: booking-service
 
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/booking_db}
     username: ${SPRING_DATASOURCE_USERNAME:booking_user}
@@ -24,17 +30,22 @@ management:
 
 security:
   jwt:
-    issuer: ${JWT_ISSUER:booking-service}
-    secret: ${JWT_SECRET:booking-service-development-secret-key-32}
+    issuer: ${JWT_ISSUER:event-ticketing-gateway}
+    secret: ${JWT_SECRET:event-ticketing-development-secret-32}
 
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
 services:
-  ticketing:
-    base-url: ${TICKETING_SERVICE_URL:http://localhost:8083}
-    mock-enabled: ${TICKETING_SERVICE_MOCK_ENABLED:true}
   payment:
     base-url: ${PAYMENT_SERVICE_URL:http://localhost:8082}
-    mock-enabled: ${PAYMENT_SERVICE_MOCK_ENABLED:true}
+  ticketing:
+    base-url: ${TICKETING_SERVICE_URL:http://localhost:8091}
+
+messaging:
+  exchanges:
+    payment-events: ${PAYMENT_EVENTS_EXCHANGE:payment-events}
+    booking-events: ${BOOKING_EVENTS_EXCHANGE:booking-events}
+  queues:
+    payment-completed: ${PAYMENT_COMPLETED_QUEUE:booking.payment-completed}
