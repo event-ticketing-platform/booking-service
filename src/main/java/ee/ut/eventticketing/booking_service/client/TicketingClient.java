@@ -4,7 +4,11 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -25,6 +29,7 @@ public class TicketingClient {
         restClient.patch()
                 .uri("/ticket-types/{ticketTypeId}/reserve", ticketTypeId)
                 .contentType(MediaType.APPLICATION_JSON)
+                .headers(this::addAuthorizationHeader)
                 .body(new TicketQuantityRequest(quantity))
                 .retrieve()
                 .toBodilessEntity();
@@ -34,6 +39,7 @@ public class TicketingClient {
         restClient.patch()
                 .uri("/ticket-types/{ticketTypeId}/release", ticketTypeId)
                 .contentType(MediaType.APPLICATION_JSON)
+                .headers(this::addAuthorizationHeader)
                 .body(new TicketQuantityRequest(quantity))
                 .retrieve()
                 .toBodilessEntity();
@@ -46,6 +52,7 @@ public class TicketingClient {
         return restClient.post()
                 .uri("/tickets")
                 .contentType(MediaType.APPLICATION_JSON)
+                .headers(this::addAuthorizationHeader)
                 .body(new IssueTicketRequest(UUID.fromString(ticketTypeId), numericIdToUuid(bookingId)))
                 .retrieve()
                 .body(TicketingTicketResponse.class);
@@ -54,8 +61,16 @@ public class TicketingClient {
     public TicketingTicketStatusResponse getTicketStatus(String ticketId) {
         return restClient.get()
                 .uri("/tickets/{ticketId}/status", ticketId)
+                .headers(this::addAuthorizationHeader)
                 .retrieve()
                 .body(TicketingTicketStatusResponse.class);
+    }
+
+    private void addAuthorizationHeader(HttpHeaders headers) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication instanceof JwtAuthenticationToken jwtAuthentication) {
+            headers.setBearerAuth(jwtAuthentication.getToken().getTokenValue());
+        }
     }
 
     private UUID numericIdToUuid(Long id) {
